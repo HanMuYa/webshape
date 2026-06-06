@@ -75,7 +75,6 @@ html, body {
 <iframe id="renderer" sandbox="allow-scripts allow-same-origin"></iframe>
 
 <script>
-alert(2345678);
 (function () {
   var htmlId = null;
 
@@ -98,6 +97,7 @@ alert(2345678);
   try {
     if (typeof wps !== 'undefined' && wps.PpApplication) {
       app = wps.PpApplication();
+      alert(app);
     } else if (typeof Application !== 'undefined') {
       app = Application;
     }
