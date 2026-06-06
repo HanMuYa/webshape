@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>WebShape HTML Renderer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: #fff;
+}
+
+/* 加载状态 */
+#loading {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  background: #f3f2f1; color: #605e5c;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+}
+
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid #edebe9;
+  border-top-color: #0078d4;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+#loading .msg {
+  font-size: 14px; color: #a19f9d;
+}
+
+/* 错误状态 */
+#error {
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  background: #fff; color: #a80000;
+  font-family: -apple-system, "Segoe UI", sans-serif;
+  padding: 20px; text-align: center;
+}
+
+#error .icon { font-size: 48px; margin-bottom: 12px; }
+#error .title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+#error .detail { font-size: 13px; color: #605e5c; max-width: 400px; line-height: 1.5; }
+
+/* 渲染 iframe */
+#renderer {
+  display: none;
+  width: 100%; height: 100%;
+  border: none;
+}
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="spinner"></div>
+  <div class="msg">正在从文档加载 HTML 内容...</div>
+</div>
+
+<div id="error">
+  <div class="icon">&#9888;</div>
+  <div class="title">无法加载 HTML 内容</div>
+  <div class="detail" id="error-detail"></div>
+</div>
+
+<iframe id="renderer" sandbox="allow-scripts allow-same-origin"></iframe>
+
+<script>
+(function () {
+  var htmlId = null;
+
+  // 从 URL query string 中提取 htmlId
+  try {
+    var params = new URLSearchParams(window.location.search);
+    htmlId = params.get('htmlId');
+  } catch (e) {
+    showError('无法解析 URL 参数');
+    return;
+  }
+
+  if (!htmlId) {
+    showError('缺少 htmlId 参数\n期望格式: ?htmlId=xxxxxxxx-xxxx-4xxx-...');
+    return;
+  }
+
+  // 获取 WPS PPT Application
+  var app = null;
+  try {
+    if (typeof wps !== 'undefined' && wps.PpApplication) {
+      app = wps.PpApplication();
+    } else if (typeof Application !== 'undefined') {
+      app = Application;
+    }
+  } catch (e) {
+    showError('无法连接 WPS 演示环境\n' + (e.message || e));
+    return;
+  }
+
+  if (!app) {
+    showError('未检测到 WPS 演示 Application 对象');
+    return;
+  }
+
+  // 从 CustomXMLParts 中查找匹配的 HTML 内容
+  var htmlContent = null;
+  try {
+    var parts = app.ActivePresentation.CustomXMLParts;
+    for (var i = 1; i <= parts.Count; i++) {
+      var part = parts.Item(i);
+      var xml = part.XML;
+      // 检查是否包含目标 id
+      if (xml.indexOf('id="' + htmlId + '"') !== -1) {
+        // 提取 CDATA 中的 base64 数据
+        var match = xml.match(/<data><!\[CDATA\[([A-Za-z0-9+/=]+)\]\]><\/data>/);
+        if (match) {
+          var b64 = match[1];
+          // Base64 解码
+          htmlContent = decodeURIComponent(escape(atob(b64)));
+        } else {
+          showError('XML 格式异常：未找到 data CDATA 节点\nhtmlId: ' + htmlId);
+          return;
+        }
+        break;
+      }
+    }
+  } catch (e) {
+    showError('读取 CustomXMLParts 失败\n' + (e.message || e));
+    return;
+  }
+
+  if (!htmlContent) {
+    showError('未找到 htmlId 对应的内容\nhtmlId: ' + htmlId + '\n\n请确认内容已保存到当前演示文稿的 CustomXMLParts。');
+    return;
+  }
+
+  // 使用 srcdoc 渲染到 iframe
+  try {
+    var iframe = document.getElementById('renderer');
+    iframe.srcdoc = htmlContent;
+    document.getElementById('loading').style.display = 'none';
+    iframe.style.display = 'block';
+  } catch (e) {
+    showError('渲染失败\n' + (e.message || e));
+  }
+
+  function showError(msg) {
+    document.getElementById('loading').style.display = 'none';
+    var errEl = document.getElementById('error');
+    errEl.style.display = 'flex';
+    document.getElementById('error-detail').innerText = msg;
+  }
+})();
+</script>
+</body>
+</html>
